@@ -1,7 +1,7 @@
 # Maze Runner Robot
 
-![Maze Runner Robot](![4 isometric](https://github.com/vamsikrishnaghanta/maze_runner_robot/assets/145189721/a48ee95b-d255-4e9a-96c1-8ab498fdd558)
-)
+![4 isometric](https://github.com/vamsikrishnaghanta/maze_runner_robot/assets/145189721/a48ee95b-d255-4e9a-96c1-8ab498fdd558)
+
 
 ## Description
 
