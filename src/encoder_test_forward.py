@@ -3,19 +3,19 @@ import time
 import csv
 
 # Define the motor control pins
-motor_right_enable_pin = 22  # PWM pin for Motor 1 speed control
-motor_right_pin1 = 4  # Motor 1 input pin 1
-motor_right_pin2 = 14  # Motor 1 input pin 2
+motor_right_enable_pin = 27  # PWM pin for Motor 1 speed control
+motor_right_pin1 = 5  # Motor 1 input pin 1
+motor_right_pin2 = 22  # Motor 1 input pin 2
 
-motor_left_enable_pin = 23  # PWM pin for Motor 2 speed control
-motor_left_pin1 = 17  # Motor 2 input pin 1
-motor_left_pin2 = 18  # Motor 2 input pin 2
+motor_left_enable_pin = 6  # PWM pin for Motor 2 speed control
+motor_left_pin1 = 4 # Motor 2 input pin 1
+motor_left_pin2 = 17  # Motor 2 input pin 2
 
 # Define encoder pins (c1 and c2) for both motors
-encoder_right_c1 = 26
-encoder_right_c2 = 20
-encoder_left_c1 = 24
-encoder_left_c2 = 10
+encoder_right_c1 = 15
+encoder_right_c2 = 14
+encoder_left_c1 = 21
+encoder_left_c2 = 20
 
 # Create empty lists to store the data
 pid_speed_control_data = []
@@ -86,13 +86,12 @@ GPIO.add_event_detect(encoder_left_c2, GPIO.RISING, callback=lambda x: handle_pu
 
 
 # Variables for PD controller
-base_speed = 15
-max_speed = 40
+base_speed = 45
+max_speed = 80
 target_pulses = 1000  # Adjust as needed
-kp = 0.001  # Proportional gain
-ki = 0.0001  # Integral gain
-kd = 0.1  # Derivative gain
-current_time = time.time()
+kp = 0.3  # Proportional gain
+ki = 0.00008  # Integral gain
+kd = 0.01  # Derivative gain
 
 forward_speed_integral = 0
 forward_previous_speed_error = 0
@@ -100,13 +99,23 @@ motor_right_speed = 0
 motor_left_speed = 0
 forward_speed_difference = 0
 
-
+# The time interval for resetting the integral term
+integral_reset_interval = 0.3
+# Initialize the last integral reset time
+last_integral_reset_time = time.time()
 
 try:
     while True:
+        # Calculate the time elapsed since the last integral reset
+        current_time = time.time()
+        time_elapsed = current_time - last_integral_reset_time
+
+        # Check if it's time to reset the integral term
+        if time_elapsed >= integral_reset_interval:
+            forward_speed_integral = 0  # Reset the integral term
+            last_integral_reset_time = current_time  # Update the last reset time
+
         # Calculate the difference in speeds between the two motors
-        # motor_speed1 = 5 + pulse_count11/current_time
-        # motor_speed2 = 5 + pulse_count21/current_time
         forward_speed_difference = encoder_right_count_c1 - encoder_left_count_c1
 
         # Define a synchronization PID controller

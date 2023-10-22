@@ -2,24 +2,24 @@ import RPi.GPIO as GPIO
 import time
 
 # Define GPIO pins for motor control
-motor_right_enable_pin = 22  # PWM pin for Motor 1 speed control
-motor_right_pin1 = 4  # Motor 1 input pin 1
-motor_right_pin2 = 14  # Motor 1 input pin 2
+motor_right_enable_pin = 27  # PWM pin for Motor 1 speed control
+motor_right_pin1 = 5  # Motor 1 input pin 1
+motor_right_pin2 = 22  # Motor 1 input pin 2
 
-motor_left_enable_pin = 23  # PWM pin for Motor 2 speed control
-motor_left_pin1 = 17  # Motor 2 input pin 1
-motor_left_pin2 = 18  # Motor 2 input pin 2
+motor_left_enable_pin = 6  # PWM pin for Motor 2 speed control
+motor_left_pin1 = 4  # Motor 2 input pin 1
+motor_left_pin2 = 17  # Motor 2 input pin 2
 
 # Define GPIO pins for motor encoders
-encoder_right_c1 = 26  # GPIO pin for motor 1encoder c1
-encoder_right_c2 = 20  # GPIO pin for motor 1 encoder c2
-encoder_left_c1 = 24  # GPIO pin for motor 2 encoder c1
-encoder_left_c2 = 10  # GPIO pin for motor 2 encoder c2
+encoder_right_c1 = 15  # GPIO pin for motor 1encoder c1
+encoder_right_c2 = 14  # GPIO pin for motor 1 encoder c2
+encoder_left_c1 = 21  # GPIO pin for motor 2 encoder c1
+encoder_left_c2 = 20  # GPIO pin for motor 2 encoder c2
 
 # Define GPIO pins for IR sensors
-sensor_front = 8  # Change to your actual GPIO pin for front sensor
-sensor_right = 7  # Change to your actual GPIO pin for right sensor
-sensor_left = 5  # Change to your actual GPIO pin for left sensor
+sensor_front = 26  # Change to your actual GPIO pin for front sensor
+sensor_right = 19  # Change to your actual GPIO pin for right sensor
+sensor_left = 13  # Change to your actual GPIO pin for left sensor
 
 # Set up GPIO mode and pins
 GPIO.setmode(GPIO.BCM)
@@ -63,19 +63,19 @@ class MotorControls:
         self.motor2_forward = True
 
         # Initialize PD controllers
-        self.kp = 0.0008
-        self.ki = 0.0001
+        self.kp = 0.3
+        self.ki = 0.00008
         self.kd = 0.01
 
         # For driving forward
-        self.base_speed = 20
-        self.max_speed = 40
+        self.base_speed = 40
+        self.max_speed = 80
         self.forward_speed_integral = 0
         self.forward_previous_speed_error = 0
 
         # For rotation
-        self.pulse_for_90_degree = 80  # ticks for 90 degrees rotation actually it 106 pulses
-        self.pulse_for_180_degree = 180
+        self.pulse_for_90_degree = 100  # ticks for 90 degrees rotation actually it 106 pulses
+        self.pulse_for_180_degree = 190
         self.previous_angular_error = 0
 
         # Variables for encoder readings
@@ -102,8 +102,6 @@ class MotorControls:
 
     # Function to handle pulse detection for encoders
     def handle_pulse(self, encoder_index):
-        # global pulse_count11, pulse_count12, pulse_count21, pulse_count22
-
         if encoder_index == 1:
             self.encoder_right_count_c1 += 1
         elif encoder_index == 2:
@@ -133,8 +131,13 @@ class MotorControls:
         self.set_motor_speeds(self.motor1_forward, self.motor2_forward, 0, 0)
         time.sleep(0.1)  # Delay for smoother control
 
-    # Function to drive the robot straight using a PD controller
-    def drive_straight(self, target_pulses=10000):
+    def make_straight(self):
+        self.set_motor_speeds(False, False, self.base_speed, self.base_speed)
+        time.sleep(3)
+        self.stop_motors()
+
+    # Function to drive the robot straight using a PID controller
+    def drive_straight(self, target_pulses=1000):
         self.clear_encoders()
 
         try:
@@ -151,13 +154,13 @@ class MotorControls:
                 # Calculate the control signal for synchronization
                 pid_speed_control_signal = self.kp * forward_speed_error + self.ki * self.forward_speed_integral + self.kd * forward_speed_derivative
 
-                print(f'pid_speed_control:{pid_speed_control_signal} ')
+                #print(f'pid_speed_control:{pid_speed_control_signal} ')
 
                 # motor speeds based on the synchronization control signal
                 motor_right_speed = self.base_speed - pid_speed_control_signal
                 motor_left_speed = self.base_speed + pid_speed_control_signal
 
-                print(f'motor_speed1:{motor_right_speed}, motor_speed2: {motor_left_speed}')
+                #print(f'motor_speed1:{motor_right_speed}, motor_speed2: {motor_left_speed}')
 
                 # Limit motor speeds between 0 and 100
                 motor_right_speed = max(0, min(self.max_speed, motor_right_speed))
@@ -168,7 +171,7 @@ class MotorControls:
 
                 avg_target_pulses = (self.encoder_right_count_c1 + self.encoder_left_count_c1)/2
 
-                if avg_target_pulses >= target_pulses or front_sensor:
+                if avg_target_pulses >= target_pulses or front_sensor == GPIO.LOW:
                     break
 
                 time.sleep(0.01)  # A small delay to avoid busy waiting
@@ -234,23 +237,34 @@ def solve_maze():
     while True:
         front_sensor, right_sensor, left_sensor = check_sensors()
 
-        if not front_sensor:  # No wall in front
+        if front_sensor == GPIO.HIGH: #and right_sensor == GPIO.LOW:  # No wall in front
             print('Case 1: Front sensor not detected')
             motor_controls.drive_straight()
 
-        elif front_sensor and right_sensor:
-            print('Case 2: Front and right sensors detected')
+        elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.HIGH:
+            # Both right wall and front wall are detected 'corner'
+            print('Case 2: Front and right sensors detected - corner')
             motor_controls.rotate_in_degrees('left', motor_controls.pulse_for_90_degree)
-            time.sleep(10)
+            time.sleep(3)
+            motor_controls.make_straight()
 
-        # elif not right_sensor:  # No wall on the right
-        #     motor_controls.drive_straight(50)
-        #     time.sleep(1)
-        #     motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
-        #
-        # elif front_sensor and right_sensor and left_sensor:
-        #     # Case 3: Dead-end, rotate 180 degrees
-        #     motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_180_degree)
+        elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.LOW:
+            # Case 3: Dead-end, rotate 180 degrees
+            print('Case 3: All three front, left and right sensors detected - DEAD END')
+            motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_180_degree)
+            time.sleep(3)
+            motor_controls.make_straight()
+
+        elif front_sensor == GPIO.LOW and right_sensor == GPIO.HIGH:  # No wall on the right
+            print('Case 4: right sensor not detected')
+            print('Driving 50 pulse straight....')
+            motor_controls.drive_straight(50)
+            time.sleep(1)
+            print('Turning right....')
+            motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
+            time.sleep(1)
+            motor_controls.drive_straight(50)
+            time.sleep(3)
 
 
 # Start solving the maze

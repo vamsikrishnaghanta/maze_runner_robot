@@ -3,18 +3,18 @@ import time
 import csv
 
 # Define the motor control pins
-motor1_enable_pin = 22  # PWM pin for Motor 1 speed control
-motor1_pin1 = 4  # Motor 1 input pin 1
-motor1_pin2 = 14  # Motor 1 input pin 2
+motor1_enable_pin = 27  # PWM pin for Motor 1 speed control
+motor1_pin1 = 5  # Motor 1 input pin 1
+motor1_pin2 = 22  # Motor 1 input pin 2
 
-motor2_enable_pin = 23  # PWM pin for Motor 2 speed control
-motor2_pin1 = 17  # Motor 2 input pin 1
-motor2_pin2 = 18  # Motor 2 input pin 2
+motor2_enable_pin = 6  # PWM pin for Motor 2 speed control
+motor2_pin1 = 4  # Motor 2 input pin 1
+motor2_pin2 = 17  # Motor 2 input pin 2
 
 # Define encoder pins (c1 and c2) for both motors
-encoder1_c1 = 24
-encoder1_c2 = 10
-encoder2_c1 = 26
+encoder1_c1 = 15
+encoder1_c2 = 14
+encoder2_c1 = 21
 encoder2_c2 = 20
 
 # Create empty lists to store the data
@@ -59,13 +59,13 @@ def set_motor_speeds(speed1, speed2):
 
 # Variables for PD controller
 target_pulses = 50  # Adjust as needed
-kp = 0.2  # Proportional gain
-ki = 0.08  # Integral gain
-kd = 0.1  # Derivative gain
+motor_speed = 40
+kp = 0.3  # Proportional gain
+ki = 0.00008  # Integral gain
+kd = 0.01  # Derivative gain
 speed_integral = 0
 previous_speed_error = 0
-previous_error1 = 0
-previous_error2 = 0
+previous_error = 0
 
 # Variables for encoder readings
 encoder_right_count_c1 = 0
@@ -80,13 +80,13 @@ def handle_pulse(encoder_index):
     global encoder_right_count_c1, encoder_right_count_c2, encoder_left_count_c1, encoder_left_count_c2
 
     if encoder_index == 1:
-        pulse_count11 += 1
+        encoder_right_count_c1 += 1
     elif encoder_index == 2:
-        pulse_count12 += 1
+        encoder_right_count_c2 += 1
     elif encoder_index == 3:
-        pulse_count21 += 1
+        encoder_left_count_c1 += 1
     elif encoder_index == 4:
-        pulse_count22 += 1
+        encoder_left_count_c2 += 1
 
 
 # Add event detection for all encoder channels
@@ -96,33 +96,11 @@ GPIO.add_event_detect(encoder2_c1, GPIO.RISING, callback=lambda x: handle_pulse(
 GPIO.add_event_detect(encoder2_c2, GPIO.RISING, callback=lambda x: handle_pulse(4))
 
 
-
 turn_direction ='left'
 
 try:
     while encoder_right_count_c1 < target_pulses and encoder_right_count_c2 < target_pulses:
-        current_pulses1 = encoder_right_count_c1
-        current_pulses2 = encoder_left_count_c1
-        error1 = target_pulses - current_pulses1
-        error2 = target_pulses - current_pulses2
-        derivative1 = error1 - previous_error1
-        derivative2 = error2 - previous_error2
-
-
-        # Calculate control signals for both motors
-        control_signal1 = kp * error1 + kd * derivative1
-        control_signal2 = kp * error2 + kd * derivative2
-        print(f'control_signal1:{control_signal1}, control_signal2: {control_signal2}')
-
-        # Calculate motor speeds based on control signals
-        motor_speed1 = 20 + control_signal1
-        motor_speed2 = 20 + control_signal2
-
-        # Calculate the difference in speeds between the two motors
-        speed_difference = motor_speed1 - motor_speed2
-
-        # Define a synchronization PID controller
-        speed_error = speed_difference
+        speed_error = encoder_right_count_c1 - encoder_left_count_c1
         speed_integral += speed_error
         speed_derivative = speed_error - previous_speed_error
 
@@ -132,8 +110,8 @@ try:
         print(f'pid_speed_control:{pid_speed_control_signal} ')
 
         # Adjust the motor speeds based on the synchronization control signal
-        motor_speed1 = motor_speed1 - pid_speed_control_signal
-        motor_speed2 = motor_speed2 + pid_speed_control_signal
+        motor_speed1 = motor_speed - pid_speed_control_signal
+        motor_speed2 = motor_speed + pid_speed_control_signal
         print(f'motor_speed1:{motor_speed1}, motor_speed2: {motor_speed2}')
 
         # Limit motor speeds between 0 and 100
@@ -154,8 +132,7 @@ try:
         else:
             print("Invalid turn direction")
 
-        control_signal1_data.append(control_signal1)
-        control_signal2_data.append(control_signal2)
+
         pid_speed_control_data.append(pid_speed_control_signal)
         motor_speed1_data.append(motor_speed1)
         motor_speed2_data.append(motor_speed2)
@@ -164,9 +141,6 @@ try:
 
         # Set the motor speeds
         set_motor_speeds(motor_speed1, motor_speed2)
-
-        previous_error1 = error1
-        previous_error2 = error2
         previous_speed_error = speed_error
 
         time.sleep(0.01)  # A small delay to avoid busy waiting
