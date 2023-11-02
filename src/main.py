@@ -63,15 +63,16 @@ class MotorControls:
         self.motor2_forward = True
 
         # Initialize PD controllers
-        self.kp = 0.3
+        self.kp = 0.5
         self.ki = 0.00008
         self.kd = 0.01
 
         # For driving forward
-        self.base_speed = 40
+        self.base_speed = 35
         self.max_speed = 80
         self.forward_speed_integral = 0
         self.forward_previous_speed_error = 0
+        self.time_to_stop = 0.13  # time that robot should drive after detecting the wall
 
         # For rotation
         self.pulse_for_90_degree = 100  # ticks for 90 degrees rotation actually it 106 pulses
@@ -133,11 +134,14 @@ class MotorControls:
 
     def make_straight(self):
         self.set_motor_speeds(False, False, self.base_speed, self.base_speed)
-        time.sleep(3)
+        print('Initiating make_straight method..!')
+        time.sleep(1.5)
         self.stop_motors()
 
     # Function to drive the robot straight using a PID controller
-    def drive_straight(self, target_pulses=1000):
+    def drive_straight(self, target_pulses=1000, wait_time=0):
+        # target_pulses are how much distance we want to drive the robot
+        # wait_time is how much time we still want to drive the robot after detecting the wall
         self.clear_encoders()
 
         try:
@@ -171,7 +175,12 @@ class MotorControls:
 
                 avg_target_pulses = (self.encoder_right_count_c1 + self.encoder_left_count_c1)/2
 
-                if avg_target_pulses >= target_pulses or front_sensor == GPIO.LOW:
+                if avg_target_pulses >= target_pulses:
+                    self.stop_motors()
+                    break
+                elif front_sensor == GPIO.LOW:
+                    self.clear_encoders()
+                    time.sleep(wait_time)
                     break
 
                 time.sleep(0.01)  # A small delay to avoid busy waiting
@@ -224,47 +233,58 @@ class MotorControls:
 # Create an instance of the MazeSolver class
 motor_controls = MotorControls()
 
-# Example usage:
-# motor_controls.drive_straight(200)
-# motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)  # Rotate clockwise by 90 degrees
-# time.sleep(0.2)
-# motor_controls.rotate_in_degrees('left', motor_controls.pulse_for_180_degree)  # Rotate counterclockwise by 180 degrees
-
 
 # Function to handle cases
 def solve_maze():
     print('Started solving maze')
-    while True:
-        front_sensor, right_sensor, left_sensor = check_sensors()
+    try:
+        while True:
+            front_sensor, right_sensor, left_sensor = check_sensors()
 
-        if front_sensor == GPIO.HIGH: #and right_sensor == GPIO.LOW:  # No wall in front
-            print('Case 1: Front sensor not detected')
-            motor_controls.drive_straight()
+            if front_sensor == GPIO.HIGH and right_sensor == GPIO.LOW:  # No wall in front
+                print('Case 1: Front sensor not detected')
+                motor_controls.drive_straight(wait_time=motor_controls.time_to_stop)
+                time.sleep(3)
 
-        elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.HIGH:
-            # Both right wall and front wall are detected 'corner'
-            print('Case 2: Front and right sensors detected - corner')
-            motor_controls.rotate_in_degrees('left', motor_controls.pulse_for_90_degree)
-            time.sleep(3)
-            motor_controls.make_straight()
+            elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.HIGH:
+                # Both right wall and front wall are detected 'corner'
+                print('Case 2: Front and right sensors detected - corner')
+                motor_controls.rotate_in_degrees('left', motor_controls.pulse_for_90_degree)
+                time.sleep(3)
+                motor_controls.make_straight()
 
-        elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.LOW:
-            # Case 3: Dead-end, rotate 180 degrees
-            print('Case 3: All three front, left and right sensors detected - DEAD END')
-            motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_180_degree)
-            time.sleep(3)
-            motor_controls.make_straight()
+            elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.LOW:
+                # Case 3: Dead-end, rotate 180 degrees
+                print('Case 3: All three front, left and right sensors detected - DEAD END')
+                motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_180_degree)
+                time.sleep(3)
+                motor_controls.make_straight()
 
-        elif front_sensor == GPIO.LOW and right_sensor == GPIO.HIGH:  # No wall on the right
-            print('Case 4: right sensor not detected')
-            print('Driving 50 pulse straight....')
-            motor_controls.drive_straight(50)
-            time.sleep(1)
-            print('Turning right....')
-            motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
-            time.sleep(1)
-            motor_controls.drive_straight(50)
-            time.sleep(3)
+            elif right_sensor == GPIO.HIGH:  # No wall on the right
+                print('Case 4: right sensor not detected')
+                print('Driving 50 pulse straight....')
+                motor_controls.stop_motors()
+                time.sleep(1)
+                motor_controls.drive_straight(target_pulses=50)
+                time.sleep(1)
+                print('Turning right....')
+                motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
+                time.sleep(1)
+                motor_controls.make_straight()
+                motor_controls.drive_straight(wait_time=motor_controls.time_to_stop)
+                if right_sensor == GPIO.HIGH and left_sensor == GPIO.HIGH:
+                    print('Turning right...')
+                    motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
+                    motor_controls.drive_straight()
+                    time.sleep(1)
+
+            elif front_sensor == GPIO.HIGH and right_sensor == GPIO.HIGH and left_sensor == GPIO.HIGH:
+                print('case 5: No walls detected, driving straight...')
+                motor_controls.drive_straight()
+
+    finally:
+        # Stop the motors
+        motor_controls.stop_motors()
 
 
 # Start solving the maze
