@@ -1,4 +1,0 @@
-Encoder 1,Encoder 2,Control Signal 1,Control Signal 2,PID Speed Control,Motor Speed 1,Motor Speed 2
-0,0,15.0,15.0,0.0,35.0,35.0
-2,2,10.0,10.0,0.0,30.0,30.0
-38,39,8.8,8.5,0.11400000000000027,28.686,28.614
