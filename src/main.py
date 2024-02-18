@@ -68,14 +68,15 @@ class MotorControls:
         self.kd = 0.01
 
         # For driving forward
-        self.base_speed = 35
+        self.base_speed = 30
+        self.intermediate_speed = 60
         self.max_speed = 80
         self.forward_speed_integral = 0
         self.forward_previous_speed_error = 0
         self.time_to_stop = 0.13  # time that robot should drive after detecting the wall
 
         # For rotation
-        self.pulse_for_90_degree = 100  # ticks for 90 degrees rotation actually it 106 pulses
+        self.pulse_for_90_degree = 95  # ticks for 90 degrees rotation actually it 106 pulses
         self.pulse_for_180_degree = 190
         self.previous_angular_error = 0
 
@@ -133,12 +134,12 @@ class MotorControls:
         time.sleep(0.1)  # Delay for smoother control
 
     def make_straight(self):
-        self.set_motor_speeds(False, False, self.base_speed, self.base_speed)
+        self.set_motor_speeds(False, False, self.intermediate_speed, self.intermediate_speed)
         print('Initiating make_straight method..!')
         time.sleep(1.5)
         self.stop_motors()
 
-    # Function to drive the robot straight using a PID controller
+    # Function to drive the robot straight using a PID controller by looking front and right
     def drive_straight(self, target_pulses=1000, wait_time=0):
         # target_pulses are how much distance we want to drive the robot
         # wait_time is how much time we still want to drive the robot after detecting the wall
@@ -146,7 +147,7 @@ class MotorControls:
 
         try:
             while True:
-                front_sensor, right_sensor, _ = check_sensors()
+                front_sensor, right_sensor, left_sensor = check_sensors()
 
                 forward_speed_difference = self.encoder_right_count_c1 - self.encoder_left_count_c1
                 # Define a synchronization PID controller
@@ -173,13 +174,69 @@ class MotorControls:
                 # Set the motor speeds
                 self.set_motor_speeds(True, True, motor_right_speed, motor_left_speed)
 
+                #print('Driving forward.....!')
+
                 avg_target_pulses = (self.encoder_right_count_c1 + self.encoder_left_count_c1)/2
 
                 if avg_target_pulses >= target_pulses:
                     self.stop_motors()
                     break
                 elif front_sensor == GPIO.LOW:
-                    self.clear_encoders()
+                    time.sleep(wait_time)
+                    break
+                elif right_sensor == GPIO.HIGH and left_sensor == GPIO.LOW:
+                    time.sleep(0.7)
+                    break
+
+                time.sleep(0.01)  # A small delay to avoid busy waiting
+
+        finally:
+            # Stop the motors
+            self.stop_motors()
+
+    # Function to drive the robot straight using a PID controller by looking only front
+    def drive_straight_to_wall(self, target_pulses=1000, wait_time=0):
+        # target_pulses are how much distance we want to drive the robot
+        # wait_time is how much time we still want to drive the robot after detecting the wall
+        self.clear_encoders()
+
+        try:
+            while True:
+                front_sensor, right_sensor, left_sensor = check_sensors()
+
+                forward_speed_difference = self.encoder_right_count_c1 - self.encoder_left_count_c1
+                # Define a synchronization PID controller
+                forward_speed_error = forward_speed_difference
+                self.forward_speed_integral += forward_speed_error
+                forward_speed_derivative = forward_speed_error - self.forward_previous_speed_error
+                self.forward_previous_speed_error = forward_speed_error
+
+                # Calculate the control signal for synchronization
+                pid_speed_control_signal = self.kp * forward_speed_error + self.ki * self.forward_speed_integral + self.kd * forward_speed_derivative
+
+                #print(f'pid_speed_control:{pid_speed_control_signal} ')
+
+                # motor speeds based on the synchronization control signal
+                motor_right_speed = self.base_speed - pid_speed_control_signal
+                motor_left_speed = self.base_speed + pid_speed_control_signal
+
+                #print(f'motor_speed1:{motor_right_speed}, motor_speed2: {motor_left_speed}')
+
+                # Limit motor speeds between 0 and 100
+                motor_right_speed = max(0, min(self.max_speed, motor_right_speed))
+                motor_left_speed = max(0, min(self.max_speed, motor_left_speed))
+
+                # Set the motor speeds
+                self.set_motor_speeds(True, True, motor_right_speed, motor_left_speed)
+
+                #print('Driving forward.....!')
+
+                avg_target_pulses = (self.encoder_right_count_c1 + self.encoder_left_count_c1)/2
+
+                if avg_target_pulses >= target_pulses:
+                    self.stop_motors()
+                    break
+                elif front_sensor == GPIO.LOW:
                     time.sleep(wait_time)
                     break
 
@@ -188,6 +245,7 @@ class MotorControls:
         finally:
             # Stop the motors
             self.stop_motors()
+
 
     # Function to rotate the robot by 90 degrees towards east using a PD controller
     def rotate_in_degrees(self, direction, target_pulses_angular):
@@ -241,10 +299,10 @@ def solve_maze():
         while True:
             front_sensor, right_sensor, left_sensor = check_sensors()
 
-            if front_sensor == GPIO.HIGH and right_sensor == GPIO.LOW:  # No wall in front
-                print('Case 1: Front sensor not detected')
+            if front_sensor == GPIO.HIGH and right_sensor == GPIO.LOW:  # No wall in front, wall on right
+                print('Case 1: Front sensor not detected, driving forward')
                 motor_controls.drive_straight(wait_time=motor_controls.time_to_stop)
-                time.sleep(3)
+                time.sleep(1)
 
             elif front_sensor == GPIO.LOW and right_sensor == GPIO.LOW and left_sensor == GPIO.HIGH:
                 # Both right wall and front wall are detected 'corner'
@@ -264,23 +322,21 @@ def solve_maze():
                 print('Case 4: right sensor not detected')
                 print('Driving 50 pulse straight....')
                 motor_controls.stop_motors()
-                time.sleep(1)
-                motor_controls.drive_straight(target_pulses=50)
-                time.sleep(1)
+                time.sleep(2)
                 print('Turning right....')
                 motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
                 time.sleep(1)
-                motor_controls.make_straight()
-                motor_controls.drive_straight(wait_time=motor_controls.time_to_stop)
-                if right_sensor == GPIO.HIGH and left_sensor == GPIO.HIGH:
-                    print('Turning right...')
-                    motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
-                    motor_controls.drive_straight()
-                    time.sleep(1)
+                # motor_controls.make_straight()
+                motor_controls.drive_straight_to_wall(wait_time=motor_controls.time_to_stop)
+                # if right_sensor == GPIO.HIGH and left_sensor == GPIO.HIGH:
+                #     print('Turning right...')
+                #     motor_controls.rotate_in_degrees('right', motor_controls.pulse_for_90_degree)
+                #     motor_controls.drive_straight()
+                #     time.sleep(1)
 
             elif front_sensor == GPIO.HIGH and right_sensor == GPIO.HIGH and left_sensor == GPIO.HIGH:
                 print('case 5: No walls detected, driving straight...')
-                motor_controls.drive_straight()
+                motor_controls.drive_straight_to_wall()
 
     finally:
         # Stop the motors
@@ -292,3 +348,8 @@ solve_maze()
 
 # Clean up GPIO settings
 GPIO.cleanup()
+
+
+''' In drive stright function it is not stopping untill it reaches a wall and it is not looking for wall on the right.
+it is driving even there is no wall on the right
+'''
