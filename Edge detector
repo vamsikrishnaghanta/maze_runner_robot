@@ -1,0 +1,71 @@
+import cv2
+import numpy as np
+
+def sobel_edge_detection(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    sobelx = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=5)
+    sobely = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)
+    magnitude = cv2.magnitude(sobelx, sobely)
+    _, edge_image = cv2.threshold(magnitude, 100, 255, cv2.THRESH_BINARY)
+    edge_image = np.uint8(edge_image)
+    return edge_image
+
+def find_lines(edge_image):
+    lines = cv2.HoughLinesP(edge_image, 1, np.pi / 180, threshold=100, minLineLength=100, maxLineGap=10)
+    return lines
+
+def calculate_angle(line1, line2):
+    x1, y1, x2, y2 = line1
+    x3, y3, x4, y4 = line2
+    
+    vector1 = np.array([x2 - x1, y2 - y1])
+    vector2 = np.array([x4 - x3, y4 - y3])
+    
+    unit_vector1 = vector1 / np.linalg.norm(vector1)
+    unit_vector2 = vector2 / np.linalg.norm(vector2)
+    dot_product = np.dot(unit_vector1, unit_vector2)
+    angle = np.arccos(dot_product)
+    angle_degrees = np.degrees(angle)
+    
+    return angle_degrees
+
+# Load image
+image = cv2.imread('path_to_your_image.jpg')
+
+# Detect edges
+edge_image = sobel_edge_detection(image)
+
+# Find lines
+lines = find_lines(edge_image)
+
+# Filter and classify lines
+horizontal_lines = []
+vertical_lines = []
+
+for line in lines:
+    for x1, y1, x2, y2 in line:
+        if abs(y2 - y1) < abs(x2 - x1):  # Horizontal line
+            horizontal_lines.append((x1, y1, x2, y2))
+        else:  # Vertical line
+            vertical_lines.append((x1, y1, x2, y2))
+
+# Select the most significant horizontal and vertical lines
+if horizontal_lines and vertical_lines:
+    longest_horizontal_line = max(horizontal_lines, key=lambda l: np.linalg.norm([l[2] - l[0], l[3] - l[1]]))
+    longest_vertical_line = max(vertical_lines, key=lambda l: np.linalg.norm([l[2] - l[0], l[3] - l[1]]))
+    
+    angle = calculate_angle(longest_horizontal_line, longest_vertical_line)
+    
+    print(f"The angle between the horizontal wire and the vertical line is: {angle} degrees")
+else:
+    print("Could not find sufficient lines to calculate the angle.")
+
+# Optionally, visualize the lines and edges
+for line in horizontal_lines + vertical_lines:
+    x1, y1, x2, y2 = line
+    cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+cv2.imshow('Detected Lines', image)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
