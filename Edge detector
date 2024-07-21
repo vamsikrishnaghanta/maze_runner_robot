@@ -1,71 +1,49 @@
-import cv2
 import numpy as np
 
-def sobel_edge_detection(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    sobelx = cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=5)
-    sobely = cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=5)
-    magnitude = cv2.magnitude(sobelx, sobely)
-    _, edge_image = cv2.threshold(magnitude, 100, 255, cv2.THRESH_BINARY)
-    edge_image = np.uint8(edge_image)
-    return edge_image
+# Assuming the angles from the horizontal axis in each image (in degrees)
+theta1 = np.radians(45)  # Replace with actual angle in radians from camera 1
+theta2 = np.radians(30)  # Replace with actual angle in radians from camera 2
+theta3 = np.radians(60)  # Replace with actual angle in radians from camera 3
 
-def find_lines(edge_image):
-    lines = cv2.HoughLinesP(edge_image, 1, np.pi / 180, threshold=100, minLineLength=100, maxLineGap=10)
-    return lines
+# Assuming the radius of the tube (distance from camera to the wire center)
+radius = 1.0  # Replace with actual radius
 
-def calculate_angle(line1, line2):
-    x1, y1, x2, y2 = line1
-    x3, y3, x4, y4 = line2
-    
-    vector1 = np.array([x2 - x1, y2 - y1])
-    vector2 = np.array([x4 - x3, y4 - y3])
-    
-    unit_vector1 = vector1 / np.linalg.norm(vector1)
-    unit_vector2 = vector2 / np.linalg.norm(vector2)
-    dot_product = np.dot(unit_vector1, unit_vector2)
-    angle = np.arccos(dot_product)
-    angle_degrees = np.degrees(angle)
-    
-    return angle_degrees
+# Positions of the cameras around the tube (in degrees)
+camera_angles = [0, 120, 240]
 
-# Load image
-image = cv2.imread('path_to_your_image.jpg')
+# Convert angles to 3D coordinates
+def calculate_3d_point(theta, camera_angle, radius):
+    camera_angle_rad = np.radians(camera_angle)
+    x = radius * np.cos(camera_angle_rad)
+    y = radius * np.sin(camera_angle_rad)
+    z = radius * np.tan(theta)
+    return np.array([x, y, z])
 
-# Detect edges
-edge_image = sobel_edge_detection(image)
+# 3D coordinates of the wire points from each camera
+points_3d = np.array([
+    calculate_3d_point(theta1, camera_angles[0], radius),
+    calculate_3d_point(theta2, camera_angles[1], radius),
+    calculate_3d_point(theta3, camera_angles[2], radius)
+])
 
-# Find lines
-lines = find_lines(edge_image)
+# Calculate the centroid of the 3D points
+centroid = np.mean(points_3d, axis=0)
 
-# Filter and classify lines
-horizontal_lines = []
-vertical_lines = []
+# Subtract the centroid to center the points at the origin
+centered_points = points_3d - centroid
 
-for line in lines:
-    for x1, y1, x2, y2 in line:
-        if abs(y2 - y1) < abs(x2 - x1):  # Horizontal line
-            horizontal_lines.append((x1, y1, x2, y2))
-        else:  # Vertical line
-            vertical_lines.append((x1, y1, x2, y2))
+# Perform Singular Value Decomposition (SVD) to find the normal of the plane
+U, S, Vt = np.linalg.svd(centered_points)
+normal_vector = Vt[-1]
 
-# Select the most significant horizontal and vertical lines
-if horizontal_lines and vertical_lines:
-    longest_horizontal_line = max(horizontal_lines, key=lambda l: np.linalg.norm([l[2] - l[0], l[3] - l[1]]))
-    longest_vertical_line = max(vertical_lines, key=lambda l: np.linalg.norm([l[2] - l[0], l[3] - l[1]]))
-    
-    angle = calculate_angle(longest_horizontal_line, longest_vertical_line)
-    
-    print(f"The angle between the horizontal wire and the vertical line is: {angle} degrees")
-else:
-    print("Could not find sufficient lines to calculate the angle.")
+# The z-axis in the 3D coordinate system
+z_axis = np.array([0, 0, 1])
 
-# Optionally, visualize the lines and edges
-for line in horizontal_lines + vertical_lines:
-    x1, y1, x2, y2 = line
-    cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+# Calculate the angle between the normal vector and the z-axis
+dot_product = np.dot(normal_vector, z_axis)
+angle = np.arccos(dot_product / np.linalg.norm(normal_vector))
 
-cv2.imshow('Detected Lines', image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+# Convert the angle from radians to degrees
+bend_angle = np.degrees(angle)
+
+print(f"Bend angle of the wire with respect to the tube's center axis: {bend_angle:.2f} degrees")
