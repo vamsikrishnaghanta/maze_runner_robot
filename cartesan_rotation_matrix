@@ -1,0 +1,142 @@
+"""
+calculating wire orientation using vectors:
+we had three planes and three angles made by wire each in these three planes with respective to z axis.
+Calculate the unit vectors of wire in these three planes using the plane and the angle it made with z axis.
+( 44.16x + 25.5y = 0 ) - plane at 30 degrees,      alpha - angle at 30 degrees
+( -44.16x + 25.5y = 0 ) - plane at 150 degrees,    beta - angle at 150 degrees
+( y = 0 ) - plane at 270 degrees,                  gamma - angle at 270 degrees
+
+In the calculations two coordinate systems are considered, coordinate system A centered at wire entry point into the
+camera system and coordinate system B centered at 3 camera center point it is considered that cameras are placed in
+XY plane of coordinate system B and Z axis is pointed towards wire entry point, coordinate system A is simple
+180 rotation of the system B and placed at 40 mm on the Z axis of system B.
+
+"""
+import numpy as np
+import csv
+import os
+
+# Normal vectors of the planes at 30, 150, 270 degrees
+normal_vector_1 = np.array([44.16, 25.5, 0])
+normal_vector_2 = np.array([-44.16, 25.5, 0])
+normal_vector_3 = np.array([0, 1, 0])
+
+
+# Function to find the direction vector of the wire in the plane
+def direction_vector(normal, cos_theta):
+    z_component = cos_theta
+    xy_magnitude = np.sqrt(1 - z_component**2)
+    xy_direction = np.cross(normal, [0, 0, 1])
+    xy_direction = xy_direction / np.linalg.norm(xy_direction)
+    direction = xy_magnitude * xy_direction
+    print('direction xy', direction)
+    direction = np.append(direction[:2], z_component)
+    print('direction', direction)
+    return direction / np.linalg.norm(direction)
+
+
+def calculate_rotation_matrix(resultant_vector):
+
+    # Calculate the rotation axis
+    z = np.array([0, 0, 1])
+    rotation_axis = np.cross(z, resultant_vector)
+    rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)  # Normalizing the rotation axis
+
+    # Calculating the rotation angle
+    theta = np.arccos(np.dot(z, resultant_vector))
+
+    # Rodriguez rotation formula
+    K = np.array([                                     # Skew-symmetric matrix
+        [0, -rotation_axis[2], rotation_axis[1]],
+        [rotation_axis[2], 0, -rotation_axis[0]],
+        [-rotation_axis[1], rotation_axis[0], 0]
+    ])
+    I = np.eye(3)  # 3x3 identity matrix
+    rota_matrix = I + np.sin(theta) * K + (1 - np.cos(theta)) * np.dot(K, K)
+
+    return rota_matrix
+
+
+def find_intersection_with_xy_plane(resultant_vector_A):
+
+    """
+    In 3D geometry, a line can be represented parametrically as:
+    P(t)=P0+t⋅d
+    where:
+    P(t)is a point on the line at parameter
+    P0 is a point on the line (in this case, the origin of system A transformed to system B).
+    d is the direction vector of the line.
+    """
+
+    distance_between_origins = 40   # distance between camera center to wire entry point, it is measured 40mm
+    print('distance_between_origins:', distance_between_origins)
+
+    # Rotate the vector 180 degrees around the y-axis
+    vector_B_prime = np.array([-resultant_vector_A[0], resultant_vector_A[1], -resultant_vector_A[2]])
+
+    # Translate the vector to account for the offset in Z axis
+    vector_B_translated = vector_B_prime + np.array([0, 0, distance_between_origins])
+
+    # Calculate t for the intersection with the xy-plane (z = 0 in system B)
+    """ The plane equation in B is z = 0, and the line starts at (0, 0, 40) in B [40-t⋅Vz = 0] """
+    t = distance_between_origins / (resultant_vector_A[2])
+
+    # Calculate the intersection point in system B
+    intersection_B = t * vector_B_translated[:2]
+
+    return intersection_B
+
+
+# Deviation angles of wire from 3 cameras
+alpha = 8.37
+beta = 2.75
+gamma = 5.78
+
+alpha = np.radians(alpha)
+beta = np.radians(beta)
+gamma = np.radians(gamma)
+
+# Calculating direction cosines
+cos_alpha = np.cos(alpha)
+cos_beta = np.cos(beta)
+cos_gamma = np.cos(gamma)
+
+# Calculating direction vectors
+vector1 = direction_vector(normal_vector_1, cos_alpha)
+vector2 = direction_vector(normal_vector_2, cos_beta)
+vector3 = direction_vector(normal_vector_3, cos_gamma)
+
+# Calculate the direction vector of the wire
+resultant_vector = (vector1 + vector2 + vector3) / 3
+resultant_vector = resultant_vector / np.linalg.norm(resultant_vector)  # Normalizing the resultant vector
+
+print("Unit vector for Plane 1:", vector1)
+print("Unit vector for Plane 2:", vector2)
+print("Unit vector for Plane 3:", vector3)
+print('resultant_vector:', resultant_vector)
+
+rotation_matrix = calculate_rotation_matrix(resultant_vector)
+intersection_point = find_intersection_with_xy_plane(resultant_vector)
+
+# Calculate angles with x, y, and z axes
+angle_with_x = np.degrees(np.arccos(resultant_vector[0]))
+angle_with_y = np.degrees(np.arccos(resultant_vector[1]))
+angle_with_z = np.degrees(np.arccos(resultant_vector[2]))
+
+# Extract roll, pitch, and yaw from the rotation matrix
+pitch = np.degrees(np.arctan2(-rotation_matrix[2, 0], np.sqrt(rotation_matrix[0, 0]**2 + rotation_matrix[1, 0]**2)))
+yaw = np.degrees(np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0]))
+roll = np.degrees(np.arctan2(rotation_matrix[2, 1], rotation_matrix[2, 2]))
+
+print("Rotation Matrix:")
+print(rotation_matrix)
+print("Roll:", roll)
+print("Pitch:", pitch)
+print("Yaw:", yaw)
+print("Angle with x-axis:", angle_with_x)
+print("Angle with y-axis:", angle_with_y)
+print("Angle with z-axis:", angle_with_z)
+
+print(f"Intersection point in system B's xy-plane: {intersection_point}")
+
+
