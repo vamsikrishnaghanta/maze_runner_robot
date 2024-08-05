@@ -1,0 +1,85 @@
+import numpy as np
+
+def calculate_direction_vector(normal, angle_deg):
+    """Calculate the direction vector in a given plane."""
+    angle_rad = np.radians(angle_deg)
+    z_component = np.cos(angle_rad)
+    xy_component = np.sin(angle_rad) * normal
+    vector = xy_component + np.array([0, 0, z_component])
+    return vector
+
+def normalize_vector(vector):
+    """Normalize a vector."""
+    norm = np.linalg.norm(vector)
+    if norm == 0:
+        return vector
+    return vector / norm
+
+def calculate_rotation_matrix_and_euler_angles(vectors):
+    """Calculate the rotation matrix and Euler angles from direction vectors."""
+    # Sum of all vectors to find the resultant
+    resultant_vector = sum(vectors)
+    resultant_vector = normalize_vector(resultant_vector)
+    
+    # Assuming initial direction is along z-axis
+    initial_direction = np.array([0, 0, 1])
+    
+    # Calculate rotation axis (cross product)
+    rotation_axis = np.cross(initial_direction, resultant_vector)
+    rotation_axis = normalize_vector(rotation_axis)
+    
+    # Calculate angle of rotation (dot product)
+    cos_theta = np.dot(initial_direction, resultant_vector)
+    angle_of_rotation = np.arccos(np.clip(cos_theta, -1.0, 1.0))
+    
+    # Calculate the rotation matrix using Rodrigues' rotation formula
+    K = np.array([
+        [0, -rotation_axis[2], rotation_axis[1]],
+        [rotation_axis[2], 0, -rotation_axis[0]],
+        [-rotation_axis[1], rotation_axis[0], 0]
+    ])
+    I = np.eye(3)
+    rotation_matrix = I + np.sin(angle_of_rotation) * K + (1 - np.cos(angle_of_rotation)) * np.dot(K, K)
+    
+    # Extract Euler angles from rotation matrix
+    # Assuming ZYX Euler angles
+    yaw = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
+    pitch = np.arcsin(-rotation_matrix[2, 0])
+    roll = np.arctan2(rotation_matrix[2, 1], rotation_matrix[2, 2])
+    
+    # Convert angles from radians to degrees
+    euler_angles_deg = np.degrees([roll, pitch, yaw])
+    
+    return rotation_matrix, euler_angles_deg
+
+# Given angles with respect to z-axis for each camera
+alpha = 5  # Deviation angle for camera 1 in degrees
+beta = 10  # Deviation angle for camera 2 in degrees
+gamma = 15  # Deviation angle for camera 3 in degrees
+
+# Normal vectors for each plane
+normal_1 = np.array([44.16, 25.5, 0])
+normal_2 = np.array([-44.16, 25.5, 0])
+normal_3 = np.array([0, 1, 0])
+
+# Calculate direction vectors
+direction_vector_1 = calculate_direction_vector(normal_1, alpha)
+direction_vector_2 = calculate_direction_vector(normal_2, beta)
+direction_vector_3 = calculate_direction_vector(normal_3, gamma)
+
+# Normalize direction vectors
+direction_vector_1 = normalize_vector(direction_vector_1)
+direction_vector_2 = normalize_vector(direction_vector_2)
+direction_vector_3 = normalize_vector(direction_vector_3)
+
+# Calculate the rotation matrix and Euler angles
+rotation_matrix, euler_angles = calculate_rotation_matrix_and_euler_angles(
+    [direction_vector_1, direction_vector_2, direction_vector_3]
+)
+
+# Print the results
+print("Direction Vector 1:", direction_vector_1)
+print("Direction Vector 2:", direction_vector_2)
+print("Direction Vector 3:", direction_vector_3)
+print("\nResultant Rotation Matrix:\n", rotation_matrix)
+print("\nEuler Angles (Roll, Pitch, Yaw) in degrees:", euler_angles)
