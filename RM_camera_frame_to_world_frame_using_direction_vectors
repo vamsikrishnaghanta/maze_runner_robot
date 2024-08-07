@@ -1,0 +1,56 @@
+import numpy as np
+
+# Define the rotation matrix for a given angle phi around the Z-axis
+def rotation_matrix_z(phi):
+    phi_rad = np.radians(phi)
+    return np.array([
+        [np.cos(phi_rad), -np.sin(phi_rad), 0],
+        [np.sin(phi_rad),  np.cos(phi_rad), 0],
+        [0,               0,               1]
+    ])
+
+# Define the angles measured by each camera
+theta_1 = 10  
+theta_2 = -5  
+theta_3 = 15  
+
+# Calculate the direction vectors in the camera's local coordinate system
+d1_local = np.array([np.sin(np.radians(theta_1)), 0, np.cos(np.radians(theta_1))])
+d2_local = np.array([np.sin(np.radians(theta_2)), 0, np.cos(np.radians(theta_2))])
+d3_local = np.array([np.sin(np.radians(theta_3)), 0, np.cos(np.radians(theta_3))])
+
+# Transform the direction vectors into world coordinates using the camera angles
+camera_angles = [30, 150, 270]
+d1_world = rotation_matrix_z(camera_angles[0]).dot(d1_local)
+d2_world = rotation_matrix_z(camera_angles[1]).dot(d2_local)
+d3_world = rotation_matrix_z(camera_angles[2]).dot(d3_local)
+
+# Compute the average direction vector in world coordinates
+D = (d1_world + d2_world + d3_world) / 3
+D /= np.linalg.norm(D)  # Normalize the vector
+
+# Compute the orthogonal axes for the rotation matrix
+z_axis = D
+x_axis = np.array([z_axis[1], -z_axis[0], 0])
+x_axis /= np.linalg.norm(x_axis)
+y_axis = np.cross(z_axis, x_axis)
+
+# Construct the rotation matrix
+R = np.column_stack((x_axis, y_axis, z_axis))
+
+# Calculate Euler angles from the rotation matrix
+# Note: Using the ZYX convention (yaw-pitch-roll)
+yaw = np.arctan2(R[1, 0], R[0, 0])
+pitch = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+roll = np.arctan2(R[2, 1], R[2, 2])
+
+# Convert Euler angles from radians to degrees
+yaw_deg = np.degrees(yaw)
+pitch_deg = np.degrees(pitch)
+roll_deg = np.degrees(roll)
+
+# Output the results
+print(f"Rotation Matrix:\n{R}")
+print(f"Yaw (ψ): {yaw_deg:.2f} degrees")
+print(f"Pitch (θ): {pitch_deg:.2f} degrees")
+print(f"Roll (φ): {roll_deg:.2f} degrees")
